@@ -16,3 +16,4 @@ update_tool/_syntax_check.js
 # 系统
 Thumbs.db
 .DS_Store
+update_tool/.token
