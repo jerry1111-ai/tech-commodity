@@ -1,0 +1,18 @@
+# 数据底稿（11MB，Pages 不需要）
+HT交易系统_数据底稿.xlsx
+宏观数据.xlsx
+
+# 缓存与中间数据
+update_tool/data/
+update_tool/data_min30/
+update_tool/data_stock/
+update_tool/logs/
+update_tool/backup_*.html
+update_tool/_syntax_check.js
+
+# 工作区元数据
+.workbuddy/
+
+# 系统
+Thumbs.db
+.DS_Store
