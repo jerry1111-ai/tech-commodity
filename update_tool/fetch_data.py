@@ -98,6 +98,40 @@ def _norm_date(x):
     return str(x)
 
 
+_SW_PATCH = None
+
+
+def _sw_patch_cache(end):
+    """预加载申万一级+二级行业最近30天收盘（一次请求共用，避免每品种重复调用）。"""
+    global _SW_PATCH
+    if _SW_PATCH is not None:
+        return _SW_PATCH
+    cache = {}
+    try:
+        e_dt = datetime.strptime(_norm_date(end), "%Y-%m-%d")
+    except Exception:
+        e_dt = datetime.now()
+    s30 = (e_dt - timedelta(days=30)).strftime("%Y%m%d")
+    e8 = e_dt.strftime("%Y%m%d")
+    for cat in ("一级行业", "二级行业"):
+        try:
+            p = ak.index_analysis_daily_sw(symbol=cat, start_date=s30, end_date=e8)
+        except Exception:
+            continue
+        for _, r in p.iterrows():
+            c = str(r["指数代码"]).strip()
+            try:
+                cache.setdefault(c, []).append(
+                    (str(r["发布日期"]), float(r["收盘指数"]),
+                     float(r["成交量"]) if pd.notna(r.get("成交量")) else 0))
+            except Exception:
+                continue
+    for c in cache:
+        cache[c].sort(key=lambda z: z[0])
+    _SW_PATCH = cache
+    return cache
+
+
 def fetch_sw(symbol, start, end):
     s, e = _norm_date(start), _norm_date(end)
     df = _call_with_retry(ak.index_hist_sw, symbol=symbol, period="day")
@@ -111,36 +145,21 @@ def fetch_sw(symbol, start, end):
         "close": pd.to_numeric(df["收盘"], errors="coerce"),
         "volume": pd.to_numeric(df["成交量"], errors="coerce"),
     })
-    # 申万官网接口常滞后：用 index_analysis_daily_sw 补最新缺失日期（仅收盘，OHLC 以邻日收盘近似）
+    # 申万官网接口常滞后：用预加载的 index_analysis_daily_sw 缓存补最新缺失日期
     try:
         cur_max = out["date"].max() if not out.empty else ""
         if cur_max < e:
-            # 一级行业不含细分（半导体/新材料/保险等在二级行业），逐个分类探测
-            sub = None
-            for cat in ("一级行业", "二级行业"):
-                try:
-                    patch = ak.index_analysis_daily_sw(symbol=cat, start_date=s.replace("-", ""),
-                                                       end_date=e.replace("-", ""))
-                except Exception:
-                    continue
-                t = patch[patch["指数代码"].astype(str) == symbol]
-                if not t.empty:
-                    sub = t
-                    break
+            patch = _sw_patch_cache(end).get(str(symbol), [])
             existing = set(out["date"]) if not out.empty else set()
             prev_close = float(out["close"].iloc[-1]) if not out.empty else None
             rows = []
-            if sub is not None:
-                for _, r in sub.sort_values("发布日期").iterrows():
-                    d = str(r["发布日期"])
-                    if d in existing:
-                        continue
-                    c = float(r["收盘指数"])
-                    v = float(r["成交量"]) if pd.notna(r.get("成交量")) else 0
-                    op = prev_close if prev_close is not None else c
-                    rows.append({"date": d, "open": op, "high": max(op, c), "low": min(op, c),
-                                 "close": c, "volume": v})
-                    prev_close = c
+            for d, c, v in patch:
+                if d in existing or d < s:
+                    continue
+                op = prev_close if prev_close is not None else c
+                rows.append({"date": d, "open": op, "high": max(op, c), "low": min(op, c),
+                             "close": c, "volume": v})
+                prev_close = c
             if rows:
                 out = pd.concat([out, pd.DataFrame(rows)], ignore_index=True)
                 out = out.drop_duplicates(subset=["date"]).sort_values("date").reset_index(drop=True)
