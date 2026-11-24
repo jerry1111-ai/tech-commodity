@@ -86,16 +86,23 @@ def main():
 
     print(f"远程 HEAD {parent_sha[:8]}；本地 {len(files)} 文件，需上传 {len(changed)} 个")
 
-    # 4. 上传变化的 blob
+    # 4. 上传变化的 blob（相同内容只传一次，如 index.html 与主 HTML 内容一致）
     tree_items = []
     total = 0
+    sha_cache = {}
     for i, (f, data) in enumerate(changed, 1):
         total += len(data)
+        sha = blob_sha(data)
+        if sha in sha_cache:
+            tree_items.append({"path": f.replace("\\", "/"), "mode": "100644",
+                               "type": "blob", "sha": sha_cache[sha]})
+            continue
         b = s.post(f"{API}/repos/{OWNER}/{REPO}/git/blobs", headers=h,
                    json={"content": base64.b64encode(data).decode(), "encoding": "base64"},
                    timeout=120)
         if b.status_code not in (200, 201):
             print(f"  blob 失败 {f}: {b.status_code}"); continue
+        sha_cache[sha] = b.json()["sha"]
         tree_items.append({"path": f.replace("\\", "/"), "mode": "100644",
                            "type": "blob", "sha": b.json()["sha"]})
         if i % 20 == 0:
