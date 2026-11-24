@@ -8,6 +8,11 @@ import numpy as np
 from score_algo import ema, _sign
 
 
+# 评分统一使用最近 400 根日K（覆盖日线MA60、 周线30周绰绰有余），
+# 保证不同脚本/不同缓存长度下口径一致，避免同一股票在两处排名不同。
+SCORE_LOOKBACK = 400
+
+
 def rnd_int(x):
     if x is None:
         return None
@@ -152,6 +157,8 @@ def reason_text(wr):
 def score_stock(bars):
     if len(bars) < 121:
         return None
+    # 统一回溯窗口，避免缓存长度差异导致评分不一致
+    bars = bars[-SCORE_LOOKBACK:] if len(bars) > SCORE_LOOKBACK else bars
     ds = daily_score(bars)
     if ds is None:
         return None

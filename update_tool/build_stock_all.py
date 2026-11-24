@@ -38,7 +38,11 @@ SW_INDUSTRIES = [
     ("801960", "石油石化"), ("801970", "环保"), ("801980", "美容护理"),
 ]
 
-WORKERS = 8
+WORKERS = 10
+CACHED_ONLY = False
+# 评分只需 ~121 根日K、周线需 ~30 周（约150交易日）。首次拉 500 天足够，
+# 避免拉 2018 年起 2000+ 根导致全量耗时翻倍。
+FIRST_START_DAYS = 500
 
 
 def sina_code(code):
@@ -49,12 +53,20 @@ def sina_code(code):
     return "sz" + code
 
 
-def fetch_daily(code):
-    """增量拉取日K（前复权），返回 DataFrame 或 None。"""
+def fetch_daily(code, cached_only=False):
+    """增量拉取日K（前复权）。东财优先（实测快6倍），失败降级新浪。"""
     os.makedirs(CACHE_DIR, exist_ok=True)
     p = os.path.join(CACHE_DIR, f"{code}.csv")
-    today = dt.date.today().strftime("%Y%m%d")
-    start = "20180101"
+    if cached_only:
+        if os.path.exists(p):
+            try:
+                df = pd.read_csv(p, dtype={"date": str})
+                return df if not df.empty else None
+            except Exception:
+                return None
+        return None
+    today = dt.date.today()
+    start = (today - dt.timedelta(days=FIRST_START_DAYS)).strftime("%Y%m%d")
     if os.path.exists(p):
         try:
             old = pd.read_csv(p, dtype={"date": str})
@@ -62,29 +74,58 @@ def fetch_daily(code):
                 start = (dt.date.fromisoformat(old["date"].max()) - dt.timedelta(days=5)).strftime("%Y%m%d")
         except Exception:
             pass
+    end = today.strftime("%Y%m%d")
+
+    out = None
+    # 1) 东财
     for attempt in range(2):
         try:
-            df = ak.stock_zh_a_daily_sina(symbol=sina_code(code), start_date=start,
-                                          end_date=today, adjust="qfq")
-            if df is None or df.empty:
+            df = ak.stock_zh_a_hist_em(symbol=code, period="daily", start_date=start,
+                                       end_date=end, adjust="qfq")
+            if df is not None and not df.empty:
+                out = pd.DataFrame({
+                    "date": pd.to_datetime(df["日期"]).dt.strftime("%Y-%m-%d"),
+                    "open": pd.to_numeric(df["开盘"], errors="coerce"),
+                    "high": pd.to_numeric(df["最高"], errors="coerce"),
+                    "low": pd.to_numeric(df["最低"], errors="coerce"),
+                    "close": pd.to_numeric(df["收盘"], errors="coerce"),
+                    "volume": pd.to_numeric(df["成交量"], errors="coerce"),
+                }).dropna(subset=["close"])
+                break
+            elif df is not None and df.empty:
                 return None
-            out = pd.DataFrame({
-                "date": pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d"),
-                "open": pd.to_numeric(df["open"], errors="coerce"),
-                "high": pd.to_numeric(df["high"], errors="coerce"),
-                "low": pd.to_numeric(df["low"], errors="coerce"),
-                "close": pd.to_numeric(df["close"], errors="coerce"),
-                "volume": pd.to_numeric(df["volume"], errors="coerce"),
-            }).dropna(subset=["close"])
-            if os.path.exists(p) and start != "20180101":
-                old = pd.read_csv(p, dtype={"date": str})
-                out = pd.concat([old, out], ignore_index=True)
-            out = out.drop_duplicates(subset=["date"]).sort_values("date")
-            out.to_csv(p, index=False, encoding="utf-8-sig")
-            return out
         except Exception:
-            time.sleep(1 + random.uniform(0, 1))
-    return None
+            time.sleep(0.5 + random.uniform(0, 0.5))
+    # 2) 降级新浪
+    if out is None or out.empty:
+        for attempt in range(2):
+            try:
+                df = ak.stock_zh_a_daily_sina(symbol=sina_code(code), start_date=start,
+                                              end_date=end, adjust="qfq")
+                if df is not None and not df.empty:
+                    out = pd.DataFrame({
+                        "date": pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d"),
+                        "open": pd.to_numeric(df["open"], errors="coerce"),
+                        "high": pd.to_numeric(df["high"], errors="coerce"),
+                        "low": pd.to_numeric(df["low"], errors="coerce"),
+                        "close": pd.to_numeric(df["close"], errors="coerce"),
+                        "volume": pd.to_numeric(df["volume"], errors="coerce"),
+                    }).dropna(subset=["close"])
+                    break
+            except Exception:
+                time.sleep(0.8 + random.uniform(0, 0.8))
+    if out is None or out.empty:
+        return None
+
+    if os.path.exists(p) and start != (today - dt.timedelta(days=FIRST_START_DAYS)).strftime("%Y%m%d"):
+        try:
+            old = pd.read_csv(p, dtype={"date": str})
+            out = pd.concat([old, out], ignore_index=True)
+        except Exception:
+            pass
+    out = out.drop_duplicates(subset=["date"]).sort_values("date")
+    out.to_csv(p, index=False, encoding="utf-8-sig")
+    return out
 
 
 def to_bars(df):
@@ -95,8 +136,8 @@ def to_bars(df):
 
 def process_stock(args):
     """(code, name) -> (result_dict|None, bars|None)"""
-    code, name = args
-    df = fetch_daily(code)
+    code, name, cached_only = args
+    df = fetch_daily(code, cached_only=cached_only)
     if df is None or df.empty:
         return None, None
     bars = to_bars(df)
@@ -109,10 +150,13 @@ def process_stock(args):
 
 
 def main():
+    global CACHED_ONLY
     only = None
     for a in sys.argv:
         if a.startswith("--only="):
             only = a.split("=", 1)[1].split(",")
+        if a == "--cached":
+            CACHED_ONLY = True
     os.makedirs(OUT_DIR, exist_ok=True)
     os.makedirs(BARS_DIR, exist_ok=True)
 
@@ -122,7 +166,17 @@ def main():
         if only and iname not in only and icode not in only:
             continue
         try:
-            comp = ak.index_component_sw(symbol=icode)
+            comp = None
+            for attempt in range(3):
+                try:
+                    comp = ak.index_component_sw(symbol=icode)
+                    if comp is not None and not comp.empty:
+                        break
+                except Exception:
+                    time.sleep(2 + random.uniform(0, 2))
+            if comp is None or comp.empty:
+                print(f"[{i}/31] {iname} 成分股获取失败（重试后仍空）")
+                continue
             comp = comp.rename(columns={"证券代码": "code", "证券名称": "name"})
             stocks = [(str(r.code).zfill(6), r.name) for r in comp.itertuples()]
         except Exception as e:
@@ -132,24 +186,28 @@ def main():
         scored = []
         done = 0
         with ThreadPoolExecutor(max_workers=WORKERS) as ex:
-            futs = {ex.submit(process_stock, s): s for s in stocks}
+            futs = {ex.submit(process_stock, (s[0], s[1], CACHED_ONLY)): s for s in stocks}
             for fu in as_completed(futs):
                 done += 1
                 try:
                     r, bars = fu.result()
                     if r:
-                        r["_bars"] = bars
-                        scored.append(r)
+                        scored.append(r)  # 不保留 bars，省内存
                 except Exception:
                     pass
 
         chosen, strict_count = sa.rank_top(scored, 20)
 
-        # 生成该行业 K线分片（前20，精简最近300根）
+        # 生成该行业 K线分片（前20，精简最近300根）——按需从缓存读取
         payload = {}
         items = []
         for rank, (x, is_sub) in enumerate(chosen, 1):
-            bars = x.get("_bars") or []
+            cp = os.path.join(CACHE_DIR, f"{x['code']}.csv")
+            try:
+                dfx = pd.read_csv(cp, dtype={"date": str})
+                bars = to_bars(dfx)
+            except Exception:
+                bars = []
             compact = [[b["date"], round(b["open"], 2), round(b["high"], 2), round(b["low"], 2),
                         round(b["close"], 2), int(b["volume"] or 0)] for b in bars[-300:]]
             payload[x["code"]] = compact
