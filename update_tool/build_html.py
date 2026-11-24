@@ -115,6 +115,14 @@ def main():
     with open(HTML_PATH, "w", encoding="utf-8") as f:
         f.write(new_html)
 
+    # 同步一份到 index.html（GitHub Pages 根路径默认页）
+    try:
+        index_path = os.path.join(os.path.dirname(HTML_PATH), "index.html")
+        shutil.copyfile(HTML_PATH, index_path)
+        print(f"已同步 index.html")
+    except Exception as e:
+        print(f"index.html 同步失败：{e}")
+
     print(f"HTML 同步完成：评分成功 {stat['score_ok']} / 数据不足 {stat['insufficient']} / 无缓存 {stat['no_cache']}")
     print(f"生成时间戳：{db['generatedAt']}")
     print(f"备份：{bak}")
