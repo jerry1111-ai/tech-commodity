@@ -82,6 +82,8 @@ def main():
         log(f"日K数据拉取返回码 {rc}")
         rc_m30 = run("fetch_min30.py")
         log(f"30分钟K线拉取返回码 {rc_m30}")
+        rc_m30i = run("fetch_min30_index.py")
+        log(f"申万指数30分钟拉取返回码 {rc_m30i}")
         rc3 = run("build_bars.py")
         log(f"K线分片生成返回码 {rc3}")
         rc30 = run("build_bars30.py")
