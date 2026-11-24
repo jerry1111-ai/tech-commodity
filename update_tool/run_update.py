@@ -96,8 +96,8 @@ def main():
         log(f"宏观评分返回码 {rc_macro}")
         rc_ext = run("build_external.py")
         log(f"外盘数据返回码 {rc_ext}")
-        rc_stock = run("build_stock.py")
-        log(f"有色选股返回码 {rc_stock}")
+        # 注：有色选股(build_stock.py)与全行业选股统一由 HT_StockAllScreen 每日生成，
+        #     避免半小时任务用不同口径覆盖 screen.js 导致与全行业页排名不一致。
         if rc2 != 0:
             log("Excel 生成失败")
             sys.exit(1)
