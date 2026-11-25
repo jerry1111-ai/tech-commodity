@@ -24,6 +24,8 @@ def main():
     args = [a for a in sys.argv[1:] if a == "--cached"]
     rc1 = run("build_stock_all.py", *args)
     print(f"[{datetime.now():%H:%M:%S}] 全行业选股返回码 {rc1}", flush=True)
+    rc3 = run("build_stock_all_30m.py")
+    print(f"[{datetime.now():%H:%M:%S}] 个股30分钟返回码 {rc3}", flush=True)
     rc2 = run("sync_sw_screen.py")
     print(f"[{datetime.now():%H:%M:%S}] 有色选股同步返回码 {rc2}", flush=True)
     if rc1 != 0 or rc2 != 0:
