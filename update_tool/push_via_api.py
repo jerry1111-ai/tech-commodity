@@ -71,14 +71,28 @@ def main():
     files = [f for f in out.stdout.splitlines() if f.strip()]
 
     changed = []
+    skipped = 0
     for f in files:
+        base = os.path.basename(f)
+        # 跳过 Office/系统临时锁文件（如 ~$宏观数据.xlsx），这类文件常被占用无法读取
+        if base.startswith("~$") or base.startswith(".~lock"):
+            skipped += 1
+            continue
         if not os.path.exists(f):
             continue
-        with open(f, "rb") as fp:
-            data = fp.read()
+        try:
+            with open(f, "rb") as fp:
+                data = fp.read()
+        except Exception as e:
+            print(f"  跳过 {f}: {type(e).__name__}")
+            skipped += 1
+            continue
         if remote.get(f.replace("\\", "/")) == blob_sha(data):
             continue  # 内容未变，跳过
         changed.append((f, data))
+
+    if skipped:
+        print(f"跳过 {skipped} 个无法读取的临时文件")
 
     if not changed:
         print("无变化，跳过推送")
