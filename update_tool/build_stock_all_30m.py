@@ -23,7 +23,7 @@ DATA = os.path.join(ROOT, "HT_Trading_System_data")
 BARS_DIR = os.path.join(DATA, "all_bars")
 ALL_SCREEN = os.path.join(DATA, "all_screen.js")
 WORKERS = 8
-KEEP = 300  # 每只保留最近300根30分钟K线
+KEEP = 1000  # 每只保留最近1000根30分钟K线（接口上限约1970）
 
 
 def sina(code):

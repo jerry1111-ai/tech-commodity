@@ -77,26 +77,8 @@ def fetch_daily(code, cached_only=False):
     end = today.strftime("%Y%m%d")
 
     out = None
-    # 1) 东财
-    for attempt in range(2):
-        try:
-            df = ak.stock_zh_a_hist_em(symbol=code, period="daily", start_date=start,
-                                       end_date=end, adjust="qfq")
-            if df is not None and not df.empty:
-                out = pd.DataFrame({
-                    "date": pd.to_datetime(df["日期"]).dt.strftime("%Y-%m-%d"),
-                    "open": pd.to_numeric(df["开盘"], errors="coerce"),
-                    "high": pd.to_numeric(df["最高"], errors="coerce"),
-                    "low": pd.to_numeric(df["最低"], errors="coerce"),
-                    "close": pd.to_numeric(df["收盘"], errors="coerce"),
-                    "volume": pd.to_numeric(df["成交量"], errors="coerce"),
-                }).dropna(subset=["close"])
-                break
-            elif df is not None and df.empty:
-                return None
-        except Exception:
-            time.sleep(0.5 + random.uniform(0, 0.5))
-    # 2) 降级新浪
+    # 东财接口内部走 py_mini_racer(V8)，多线程并发会 FATAL 崩溃，故只用新浪
+    # 新浪
     if out is None or out.empty:
         for attempt in range(2):
             try:
