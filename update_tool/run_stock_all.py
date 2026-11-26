@@ -28,6 +28,8 @@ def main():
     print(f"[{datetime.now():%H:%M:%S}] 长历史日K返回码 {rc4}", flush=True)
     rc3 = run("build_stock_all_30m.py")
     print(f"[{datetime.now():%H:%M:%S}] 个股30分钟返回码 {rc3}", flush=True)
+    rc5 = run("build_fundamentals.py")
+    print(f"[{datetime.now():%H:%M:%S}] 基本面返回码 {rc5}", flush=True)
     rc2 = run("sync_sw_screen.py")
     print(f"[{datetime.now():%H:%M:%S}] 有色选股同步返回码 {rc2}", flush=True)
     if rc1 != 0 or rc2 != 0:
