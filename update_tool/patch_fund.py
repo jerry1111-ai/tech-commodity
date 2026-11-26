@@ -47,9 +47,13 @@ def main():
             except Exception:
                 time.sleep(0.6 + random.uniform(0, 0.6))
         # 单线程 + 轻微间隔，避免再次被限流
-        time.sleep(0.4)
+        time.sleep(1.5)
         if i % 50 == 0:
             print(f"  主营 {i}/{len(need_main)}，成功{ok}，用时{time.time()-t0:.0f}s", flush=True)
+        # 连续失败则退避（同花顺有调用频率上限）
+        if ok == 0 and i >= 30 and i % 30 == 0:
+            print(f"  连续失败，退避60秒（已尝试{i}只）", flush=True)
+            time.sleep(60)
 
     print(f"主营补齐完成：{ok}/{len(need_main)}，用时{time.time()-t0:.0f}s")
 
