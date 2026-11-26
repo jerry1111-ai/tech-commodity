@@ -25,8 +25,8 @@ BARS_DIR = os.path.join(DATA, "all_bars")
 ALL_SCREEN = os.path.join(DATA, "all_screen.js")
 
 WORKERS = 8
-HISTORY_DAYS = 2000   # 约5.5年
-KEEP_BARS = 1200      # 输出保留最近1200根（约5年）
+HISTORY_DAYS = 12000  # 覆盖上市以来（约33年，接口按上市日返回）
+KEEP_BARS = 0         # 0 = 不截断，保留上市以来全部
 
 
 def sina(code):
@@ -44,13 +44,13 @@ def fetch_long(code):
     for attempt in range(2):
         try:
             df = ak.stock_zh_a_daily_sina(symbol=sina(code), start_date=start,
-                                          end_date=end, adjust="qfq")
+                                          end_date=end, adjust="hfq")
             if df is not None and not df.empty:
                 rows = [[pd.to_datetime(r["date"]).strftime("%Y-%m-%d"),
                          round(float(r["open"]), 2), round(float(r["high"]), 2),
                          round(float(r["low"]), 2), round(float(r["close"]), 2),
                          int(r["volume"])] for _, r in df.iterrows()]
-                return code, rows[-KEEP_BARS:]
+                return code, (rows[-KEEP_BARS:] if KEEP_BARS else rows)
         except Exception:
             time.sleep(1 + random.uniform(0, 1))
     return code, None
